@@ -8,12 +8,17 @@ import net.ccbluex.liquidbounce.features.module.Category
 import net.ccbluex.liquidbounce.features.module.Module
 import net.ccbluex.liquidbounce.event.handler
 import net.ccbluex.liquidbounce.ui.client.hud.designer.GuiHudDesigner
+import net.ccbluex.liquidbounce.ui.client.hud.element.elements.Notification
+import net.ccbluex.liquidbounce.ui.client.hud.element.elements.Notifications
+import net.ccbluex.liquidbounce.ui.client.hud.element.elements.Text
+import net.ccbluex.liquidbounce.ui.client.hud.element.elements.Text.Companion
 import net.ccbluex.liquidbounce.ui.font.Fonts
 import net.ccbluex.liquidbounce.utils.GlowUtils
 import net.ccbluex.liquidbounce.utils.attack.CPSCounter
 import net.ccbluex.liquidbounce.utils.client.ServerUtils
 import net.ccbluex.liquidbounce.utils.extensions.getPing
 import net.ccbluex.liquidbounce.utils.inventory.SilentHotbar
+import net.ccbluex.liquidbounce.utils.movement.BPSUtils
 import net.ccbluex.liquidbounce.utils.render.RenderUtils.drawImage
 import net.ccbluex.liquidbounce.utils.render.RenderUtils.drawRoundedRect
 import net.ccbluex.liquidbounce.utils.render.animation.AnimationUtil
@@ -25,40 +30,45 @@ import net.minecraft.client.renderer.RenderHelper.enableGUIStandardItemLighting
 import net.minecraft.item.ItemBlock
 import net.minecraft.util.ResourceLocation
 import net.ccbluex.liquidbounce.utils.render.shader.shaders.GlowShader
+import net.minecraft.client.Minecraft
 import org.lwjgl.opengl.GL11.*
 import java.awt.Color
+import java.text.DecimalFormat
 import kotlin.math.max
 
 
 object WaterMark : Module("WaterMark", Category.RENDER) {
     private val ClientName by text("ClientName", "Opai")
     private val animationSpeed by float("AnimationSpeed", 0.2F, 0.05F..1F)
-    private val animationBackgroundSpeed2 by float("AnimationBackgroundSpeed",0.4F,0.05F..1F)
+    private val Opal by boolean("Opal",false)
     private val ColorA_ by int("Red",255,0..255)
     private val ColorB_ by int("Green",255,0..255)
     private val ColorC_ by int("Blue",255,0..255)
     private val ShadowCheck by boolean("Shadow",false)
     private val shadowStrengh by int("ShadowStrength", 1, 1..2)
+    private val BackgroundAlpha by int("BackGroundAlpha",70,0..255)
 
-    private val versionNameUp = "beta"
-    private val versionNameDown = "v2.0-beta.7"
+    private val versionNameUp = "development"
+    private val versionNameDown = "v2.0"
 
     enum class State {
         Normal,
-        Scaffold
+        Normal2,
+        Scaffold,
     }
 
     val progressLen = 120F
     var ProgressBarAnimationWidth = progressLen
+    val DECIMAL_FORMAT = DecimalFormat("0.00")
+
 
     private var scaledScreen = ScaledResolution(mc)
     private var width = scaledScreen.scaledWidth
     private var height = scaledScreen.scaledHeight
     private var island_State = State.Normal
     private var start_y = (height/9).toFloat()
-
-    private var Anim_BaseStartX = (width/2).toFloat()
-    private var Anim_BaseEndX = Anim_BaseStartX
+    private var AnimStartX = (width/2).toFloat()
+    private var AnimEndX = AnimStartX
 
     val onRender2D = handler<Render2DEvent>{
         scaledScreen = ScaledResolution(mc)
@@ -69,11 +79,17 @@ object WaterMark : Module("WaterMark", Category.RENDER) {
         if (moduleManager.getModule("Scaffold")?.state == true) {
             island_State = State.Scaffold
         }else{
-            island_State = State.Normal
+            if (!Opal){
+                island_State = State.Normal2 // opai
+            }else{
+                island_State = State.Normal // opal
+            }
         }
         when (island_State) {
             State.Normal -> drawNormal()
+            State.Normal2 -> drawNormal2()
             State.Scaffold -> drawScaffold()
+            else -> {}
         }
     }
     //offset : 2F
@@ -93,14 +109,13 @@ object WaterMark : Module("WaterMark", Category.RENDER) {
         val textBar3 = max(Fonts.fontSemibold40.getStringWidth(serverip),Fonts.fontSemibold35.getStringWidth(playerPing))
         val LineWidth = 2F
         val fastLen1 = containerToUiDistance+imageLen+uiToUIDistance
-        val allLen = fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance+textBar2+uiToUIDistance+LineWidth+uiToUIDistance+textBar3+containerToUiDistance
+        val allLen = fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance+textBar2+uiToUIDistance+LineWidth+uiToUIDistance+textBar3+containerToUiDistance+3F
         val startX = width/2-allLen/2
+        AnimStartX = AnimationUtil.base(AnimStartX.toDouble(),startX.toDouble(), animationSpeed.toDouble()).toFloat().coerceAtLeast(0f)
+        AnimEndX = AnimationUtil.base(AnimEndX.toDouble(),allLen.toDouble(), animationSpeed.toDouble()).toFloat().coerceAtLeast(0f)
 
-        Anim_BaseStartX = AnimationUtil.base(Anim_BaseStartX.toDouble(),startX.toDouble(), animationBackgroundSpeed2.toDouble()).toFloat().coerceAtLeast(0f)
-        Anim_BaseEndX = AnimationUtil.base(Anim_BaseEndX.toDouble(),(allLen+startX).toDouble(), animationBackgroundSpeed2.toDouble()).toFloat().coerceAtLeast(0f)
-
-        drawRoundedRect(Anim_BaseStartX,start_y, Anim_BaseEndX, start_y+27F,Color(0,0,0,120).rgb,13F)
-        ShowShadow(startX,start_y,allLen, 27F)
+        drawRoundedRect(AnimStartX,start_y, AnimEndX+startX, start_y+27F,Color(0,0,0, BackgroundAlpha).rgb,13F)
+        ShowShadow(AnimStartX,start_y, AnimEndX, 27F)
 
         drawImage(ResourceLocation("${CLIENT_NAME.lowercase()}/logo_icon.png"), startX+containerToUiDistance+2F, start_y+4F, 19, 19,ColorAL)//23F, 23F
         Fonts.fontSemibold40.drawString(ClientName,startX+fastLen1,start_y+9F,ColorAL.rgb,false)
@@ -108,48 +123,76 @@ object WaterMark : Module("WaterMark", Category.RENDER) {
         Fonts.fontSemibold40.drawString("|",startX+fastLen1+textWidth+uiToUIDistance-1F,start_y+9F,Color(120,120,120,250).rgb,false)
 
         Fonts.fontSemibold40.drawString(versionNameUp,startX+fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance,start_y+4.5F,Color(255,255,255,255).rgb,false)
-        Fonts.fontSemibold35.drawString(versionNameDown,startX+fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance,start_y+14F,Color(170,170,170,170).rgb,false)
+        Fonts.fontSemibold35.drawString(versionNameDown,startX+fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance,start_y+14F,Color(255,255,255,110).rgb,false)
 
         Fonts.fontSemibold40.drawString("|",startX+fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance+textBar2+uiToUIDistance-1F,start_y+9F,Color(120,120,120,250).rgb,false)
 
         Fonts.fontSemibold40.drawString(serverip,startX+fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance+textBar2+uiToUIDistance+LineWidth+uiToUIDistance,start_y+4.5F,Color(255,255,255,255).rgb,false)
-        Fonts.fontSemibold35.drawString(playerPing,startX+fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance+textBar2+uiToUIDistance+LineWidth+uiToUIDistance,start_y+14F,Color(170,170,170,170).rgb,false)
+        Fonts.fontSemibold35.drawString(playerPing,startX+fastLen1+textWidth+uiToUIDistance+LineWidth+uiToUIDistance+textBar2+uiToUIDistance+LineWidth+uiToUIDistance,start_y+14F,Color(255,255,255,110).rgb,false)
 
+    }
+    private fun drawNormal2(){
+        val username = mc.session.username
+        val fps = Minecraft.getDebugFPS()
+        val pings = mc.thePlayer.getPing()
+        val ColorAL = Color(ColorA_, ColorB_, ColorC_,255)
+
+        val imageLen = 21F
+        val containerToUiDistance = 2F
+        val uiToUIDistance = 4F
+
+        val maintext = ClientName
+        val maintext2 = " | $username | ${fps}fps | ${pings}ms"
+        val maintextlen = Fonts.fontSemibold40.getStringWidth(maintext)
+        val maintextlen2 = Fonts.fontSemibold40.getStringWidth(maintext2)
+        val allLen = containerToUiDistance+imageLen+uiToUIDistance+maintextlen+maintextlen2+containerToUiDistance
+        val startX = width/2-allLen/2
+
+        AnimStartX = AnimationUtil.base(AnimStartX.toDouble(),startX.toDouble(), animationSpeed.toDouble()).toFloat().coerceAtLeast(0f)
+        AnimEndX = AnimationUtil.base(AnimEndX.toDouble(),allLen.toDouble(), animationSpeed.toDouble()).toFloat().coerceAtLeast(0f)
+
+        drawRoundedRect(AnimStartX,start_y, AnimEndX+startX+2F, start_y+27F,Color(0,0,0, BackgroundAlpha).rgb,13F)
+        ShowShadow(AnimStartX,start_y, AnimEndX, 27F)
+
+        drawImage(ResourceLocation("${CLIENT_NAME.lowercase()}/logo_icon.png"), startX+containerToUiDistance+2F, start_y+4F, 19, 19,ColorAL)
+
+        Fonts.fontSemibold40.drawString(maintext,startX+containerToUiDistance+imageLen+uiToUIDistance,start_y+9F,ColorAL.rgb,false)
+        Fonts.fontSemibold40.drawString(maintext2,startX+containerToUiDistance+imageLen+uiToUIDistance+maintextlen,start_y+9F,Color(255,255,255,255).rgb,false)
     }
     private fun drawScaffold() {
         val stack = mc.thePlayer?.inventory?.getStackInSlot(SilentHotbar.currentSlot)
         val shouldRender = stack?.item is ItemBlock
         val colorAL1 = Color(255,255,255,255)
         val colorAL2 = Color(0,0,0,200)
-        val progressLen_height = 2F
+        val progressLen_height = 3F
         val imageLen = 23F
         val offsetLen = 2F
         val blockAmount = stack?.stackSize ?: 0
-        val CPS = CPSCounter.getCPS(CPSCounter.MouseButton.RIGHT)
+        val Pitch = Companion.DECIMAL_FORMAT.format(mc.thePlayer.rotationPitch)
         val countWidth = Fonts.fontSemibold40.getStringWidth("$blockAmount blocks")
         val percentProLen = progressLen/64
-        val allLen = offsetLen+imageLen+offsetLen+progressLen+offsetLen+2F+countWidth+offsetLen
+        val allLen = offsetLen+imageLen+offsetLen+progressLen+offsetLen+4F+countWidth+offsetLen
         val startXScaffold=((width/2)-(allLen/2))
+        AnimStartX = AnimationUtil.base(AnimStartX.toDouble(),startXScaffold.toDouble(), animationSpeed.toDouble()).toFloat().coerceAtLeast(0f)
+        AnimEndX = AnimationUtil.base(AnimEndX.toDouble(),allLen.toDouble(), animationSpeed.toDouble()).toFloat().coerceAtLeast(0f)
 
         val progressLenReal2 = offsetLen+imageLen+offsetLen+percentProLen*blockAmount
         ProgressBarAnimationWidth = AnimationUtil.base(ProgressBarAnimationWidth.toDouble(),progressLenReal2.toDouble(), animationSpeed.toDouble()).toFloat().coerceAtLeast(0f)
-        Anim_BaseStartX = AnimationUtil.base(Anim_BaseStartX.toDouble(),startXScaffold.toDouble(), animationBackgroundSpeed2.toDouble()).toFloat().coerceAtLeast(0f)
-        Anim_BaseEndX = AnimationUtil.base(Anim_BaseEndX.toDouble(),(allLen+startXScaffold).toDouble(), animationBackgroundSpeed2.toDouble()).toFloat().coerceAtLeast(0f)
 
-        drawRoundedRect(Anim_BaseStartX-1F,start_y, Anim_BaseEndX+1F, start_y+27F,Color(0,0,0,120).rgb,13F)
-        ShowShadow(startXScaffold,start_y,allLen, 27F)
+        drawRoundedRect(AnimStartX-1F,start_y, AnimEndX+startXScaffold+1F, start_y+27F,Color(0,0,0, BackgroundAlpha).rgb,13F)
+        ShowShadow(AnimStartX,start_y, AnimEndX, 27F)
 
         drawRoundedRect(startXScaffold+offsetLen+imageLen+offsetLen, start_y+27F/2-progressLen_height/2,startXScaffold+offsetLen+imageLen+offsetLen+progressLen,start_y+27F/2+progressLen_height/2,colorAL2.rgb,3F)
-        drawRoundedRect(startXScaffold+offsetLen+imageLen+offsetLen, start_y+27F/2-progressLen_height/2,startXScaffold+ ProgressBarAnimationWidth,start_y+27F/2+progressLen_height/2,colorAL1.rgb,3F)
+        drawRoundedRect(startXScaffold+offsetLen+imageLen+offsetLen, start_y+27F/2-progressLen_height/2,startXScaffold+ProgressBarAnimationWidth,start_y+27F/2+progressLen_height/2,colorAL1.rgb,3F)
 
-        Fonts.fontSemibold40.drawString("$blockAmount blocks",startXScaffold+offsetLen+imageLen+offsetLen+progressLen+offsetLen+1F,start_y+4.5F,Color.WHITE.rgb)
-        Fonts.fontSemibold35.drawString("${CPS}cps",startXScaffold+offsetLen+imageLen+offsetLen+progressLen+offsetLen+1F,start_y+14F,Color(140,140,140,255).rgb)
+        Fonts.fontSemibold40.drawString("$blockAmount blocks",startXScaffold+offsetLen+imageLen+offsetLen+progressLen+offsetLen+3F,start_y+4.5F,Color.WHITE.rgb)
+        Fonts.fontSemibold35.drawString("${Pitch} a",startXScaffold+offsetLen+imageLen+offsetLen+progressLen+offsetLen+3F,start_y+14F,Color(140,140,140,255).rgb)
 
         glPushMatrix()
         enableGUIStandardItemLighting()
         if (mc.currentScreen is GuiHudDesigner) glDisable(GL_DEPTH_TEST)
         if (shouldRender) {
-            mc.renderItem.renderItemAndEffectIntoGUI(stack, (startXScaffold+offsetLen+4).toInt(), (offsetLen+start_y+3).toInt())
+            mc.renderItem.renderItemAndEffectIntoGUI(stack, (startXScaffold+offsetLen+4).toInt(), (offsetLen+start_y+4).toInt())
         }
         disableStandardItemLighting()
         enableAlpha()
